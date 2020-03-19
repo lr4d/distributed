@@ -172,3 +172,40 @@ async def test_access_semaphore_by_name(c, s, a, b):
     result = await c.gather(futures)
     assert result.count(True) == 1
     assert result.count(False) == 9
+
+
+import pytest
+
+
+@gen_cluster()
+async def test_close_async(s, a, b):
+    # We forget to wait / scheduler never allocates the proper data structures
+    sem = Semaphore()
+
+    #    with pytest.raises(RuntimeError, match="Semaphore .* not known or already closed."):
+    #       await sem.acquire()
+    await sem
+
+    assert await sem.acquire()  # now it works
+    with pytest.warns(
+        RuntimeWarning, match="Closing semaphore .* but client .* still has a lease"
+    ):
+        await sem.close()
+
+    assert await sem.acquire() is False
+    # with pytest.raises(RuntimeError, match="Semaphore .* not known or already closed."):
+    #     await sem.acquire()
+    #
+    # with pytest.raises(RuntimeError, match="Semaphore .* not known or already closed."):
+    #     await sem.release()
+
+
+def test_close_sync(client):
+    sem = Semaphore()
+    sem.close()
+    # with pytest.raises(RuntimeError, match="Semaphore .* not known or already closed."):
+    #     sem.acquire()
+    #
+    # with pytest.raises(RuntimeError, match="Semaphore .* not known or already closed."):
+    #     sem.release()
+    #
