@@ -67,6 +67,19 @@ class _PrometheusCollector:
             tasks.add_metric([state], task_counter.get(state, 0.0))
         yield tasks
 
+        sem_ext = self.server.extensions["semaphores"]
+
+        semaphore_leases_family = GaugeMetricFamily(
+            "semaphore_leases", "TODO.", labels=["name"],
+        )
+        for semaphore_name, semaphore_leases in sem_ext.leases.items():
+            semaphore_leases_family.add_metric([semaphore_name], len(semaphore_leases))
+        yield semaphore_leases_family
+
+        yield CounterMetricFamily(
+            "n_semaphores_open", ("TODO"), value=len(sem_ext.max_leases),
+        )
+
 
 class PrometheusHandler(RequestHandler):
     _collector = None
