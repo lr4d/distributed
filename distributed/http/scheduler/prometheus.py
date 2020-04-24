@@ -69,16 +69,29 @@ class _PrometheusCollector:
 
         sem_ext = self.server.extensions["semaphores"]
 
-        semaphore_leases_family = GaugeMetricFamily(
-            "semaphore_leases", "TODO.", labels=["name"],
+        # FIXME: move these to write path??
+        semaphore_active_leases_family = GaugeMetricFamily(
+            "semaphore_active_leases",
+            "Total number of currently active leases per semaphore.",
+            labels=["name"],
         )
         for semaphore_name, semaphore_leases in sem_ext.leases.items():
-            semaphore_leases_family.add_metric([semaphore_name], len(semaphore_leases))
-        yield semaphore_leases_family
+            semaphore_active_leases_family.add_metric(
+                [semaphore_name], len(semaphore_leases)
+            )
+        yield semaphore_active_leases_family
 
-        yield CounterMetricFamily(
-            "n_semaphores_open", ("TODO"), value=len(sem_ext.max_leases),
+        semaphore_max_leases_family = GaugeMetricFamily(
+            "semaphore_max_leases",
+            "Maximum leases allowed per semaphore, this will be constant for each semaphore",
+            labels=["name"],
         )
+        for semaphore_name, max_leases in sem_ext.max_leases.items():
+            semaphore_max_leases_family.add_metric([semaphore_name], max_leases)
+        yield semaphore_max_leases_family
+
+        # for metric in sem_ext.prometheus_metrics.values():
+        #     yield metric
 
 
 class PrometheusHandler(RequestHandler):
@@ -107,6 +120,4 @@ class PrometheusHandler(RequestHandler):
         self.set_header("Content-Type", "text/plain; version=0.0.4")
 
 
-routes = [
-    ("/metrics", PrometheusHandler, {}),
-]
+routes = [("/metrics", PrometheusHandler, {})]

@@ -67,16 +67,33 @@ class SemaphoreExtension:
 
         self.scheduler.extensions["semaphores"] = self
 
+        # TODO: add prometheus counters
+
+        from prometheus_client import Counter, Gauge
+
+        self.prometheus_metrics = {
+            "semaphore_pending_leases": Gauge(
+                "semaphore_pending_leases",
+                "Total number of leases pending",
+                labelnames=["name"],
+            ),
+            "semaphore_acquire_total": Counter(
+                "semaphore_acquire_total",
+                "Total number of leases acquired",
+                labelnames=["name"],
+            ),
+        }
+
         validation_callback_time = parse_timedelta(
             dask.config.get("distributed.scheduler.locks.lease-validation-interval"),
             default="s",
         )
         self._pc_lease_timeout = PeriodicCallback(
-            self._check_lease_timeout, validation_callback_time * 1000,
+            self._check_lease_timeout, validation_callback_time * 1000
         )
         self._pc_lease_timeout.start()
         self.lease_timeout = parse_timedelta(
-            dask.config.get("distributed.scheduler.locks.lease-timeout"), default="s",
+            dask.config.get("distributed.scheduler.locks.lease-timeout"), default="s"
         )
 
     async def get_value(self, comm=None, name=None):
@@ -121,6 +138,8 @@ class SemaphoreExtension:
         ):
             now = time()
             logger.info("Acquire lease %s for %s at %s", lease_id, name, now)
+            # TODO: increment counter of semaphore_acquired_total
+            self.prometheus_metrics["semaphore_acquire_total"].labels(name=name).inc()
             self.leases[name][lease_id] = now
         else:
             result = False
@@ -142,6 +161,9 @@ class SemaphoreExtension:
             w.start()
 
             while True:
+                self.prometheus_metrics["semaphore_pending_leases"].labels(
+                    name=name
+                ).inc()
                 logger.info(
                     "Trying to acquire %s for %s with %ss left.",
                     lease_id,
@@ -172,6 +194,10 @@ class SemaphoreExtension:
                     result,
                     w.elapsed(),
                 )
+                # TODO?: add value to semaphore_lease_pending gauge
+                self.prometheus_metrics["semaphore_pending_leases"].labels(
+                    name=name
+                ).dec()
                 return result
 
     def release(self, comm=None, name=None, lease_id=None):
@@ -193,6 +219,7 @@ class SemaphoreExtension:
 
     def _release_value(self, name, lease_id):
         logger.info("Releasing %s for %s", lease_id, name)
+        # TODO: increment counter of semaphore_released_total
         # Everything needs to be atomic here.
         del self.leases[name][lease_id]
         self.events[name].set()
@@ -374,7 +401,7 @@ class Semaphore:
     async def _acquire(self, timeout=None):
         lease_id = uuid.uuid4().hex
         logger.info(
-            "%s requests lease for %s with ID %s", self.client.id, self.name, lease_id,
+            "%s requests lease for %s with ID %s", self.client.id, self.name, lease_id
         )
 
         # Using a unique lease id generated here allows us to retry since the
@@ -413,7 +440,7 @@ class Semaphore:
         lease_id = self._leases.popleft()
         logger.info("%s releases %s for %s", self.client.id, lease_id, self.name)
         return self.client.sync(
-            self.client.scheduler.semaphore_release, name=self.name, lease_id=lease_id,
+            self.client.scheduler.semaphore_release, name=self.name, lease_id=lease_id
         )
 
     def get_value(self):
