@@ -121,21 +121,50 @@ class _PrometheusCollector:
             semaphore_release_total.add_metric([semaphore_name], count)
         yield semaphore_release_total
 
-        from prometheus_client.core import SummaryMetricFamily
+        from prometheus_client.core import HistogramMetricFamily
 
         semaphore_time_to_acquire_lease = (
-            SummaryMetricFamily(
+            HistogramMetricFamily(
                 "semaphore_time_to_acquire_lease",
                 "Time it took to acquire a lease (note: this only includes time spent on scheduler side, it does not "
                 "include time spent on communication).",
                 labels=["name"],
             ),
         )
+        from prometheus_client.utils import INF
+
+        # from bisect import bisect_left
+
+        HISTOGRAM_BUCKETS = (
+            0.005,
+            0.01,
+            0.025,
+            0.05,
+            0.075,
+            0.1,
+            0.25,
+            0.5,
+            0.75,
+            1.0,
+            2.5,
+            5.0,
+            7.5,
+            10.0,
+            INF,
+        )
+
+        # def _parse_timedelta_list(timedelta_list):
+        #     result = []
+        #     for value in sorted(timedelta_list):
+        #         (bisect_left(HISTOGRAM_BUCKETS, value), value)
+        import numpy as np
+
         for semaphore_name, list_of_timedeltas in sem_ext.metrics[
             "time_to_acquire_lease"
         ].items():
+            np.histogram(list_of_timedeltas, bins=HISTOGRAM_BUCKETS)
             semaphore_time_to_acquire_lease.add_metric(
-                [semaphore_name], list_of_timedeltas
+                [semaphore_name], buckets=[], sum_value=sum(list_of_timedeltas)
             )
         yield semaphore_time_to_acquire_lease
 
