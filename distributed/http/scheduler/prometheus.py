@@ -9,7 +9,11 @@ class _PrometheusCollector:
         self.server = dask_server
 
     def collect(self):
-        from prometheus_client.core import GaugeMetricFamily, CounterMetricFamily
+        from prometheus_client.core import (
+            GaugeMetricFamily,
+            CounterMetricFamily,
+            SummaryMetricFamily,
+        )
 
         yield GaugeMetricFamily(
             "dask_scheduler_clients",
@@ -96,6 +100,43 @@ class _PrometheusCollector:
         )
         for semaphore_name, lease_ids in sem_ext.pending_leases.items():
             semaphore_pending_leases.add_metric([semaphore_name], len(lease_ids))
+        yield semaphore_pending_leases
+
+        semaphore_acquire_total = CounterMetricFamily(
+            "semaphore_acquire_total",
+            "Total number of leases acquired",
+            labels=["name"],
+        )
+        for semaphore_name, count in sem_ext.metrics["acquire_total"]:
+            semaphore_acquire_total.add_metric([semaphore_name], count)
+        yield semaphore_acquire_total
+
+        semaphore_release_total = CounterMetricFamily(
+            "semaphore_release_total",
+            "Total number of leases released.\n"
+            "Note: if a semaphore is closed while there are still leases active, this count will not equal "
+            "`semaphore_acquired_total` after execution.",
+            labels=["name"],
+        )
+        for semaphore_name, count in sem_ext.metrics["release_total"]:
+            semaphore_release_total.add_metric([semaphore_name], count)
+        yield semaphore_release_total
+
+        semaphore_time_to_acquire_lease = (
+            SummaryMetricFamily(
+                "semaphore_time_to_acquire_lease",
+                "Time it took to acquire a lease (note: this only includes time spent on scheduler side, it does not "
+                "include time spent on communication).",
+                labels=["name"],
+            ),
+        )
+        for semaphore_name, list_of_timedeltas in sem_ext.metrics[
+            "time_to_acquire_lease"
+        ]:
+            semaphore_time_to_acquire_lease.add_metric(
+                [semaphore_name], list_of_timedeltas
+            )
+        yield semaphore_time_to_acquire_lease
 
 
 class PrometheusHandler(RequestHandler):

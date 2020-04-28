@@ -2,8 +2,9 @@ import asyncio
 import pickle
 import dask
 import pytest
+import numpy as np
 from dask.distributed import Client
-from time import sleep
+from time import time, sleep
 from distributed import Semaphore, fire_and_forget
 from distributed.comm import Comm
 from distributed.core import ConnectionPool
@@ -459,3 +460,34 @@ async def test_getvalue(c, s, a, b):
     assert await sem.get_value() == 1
     await sem.release()
     assert await sem.get_value() == 0
+
+
+@gen_cluster(client=True)
+async def test_metrics(c, s, a, b):
+    from collections import defaultdict
+
+    sem = await Semaphore(name="1")
+    sem2 = await Semaphore(name="2", max_leases=5)
+
+    before_acquiring = time()
+    assert await sem.acquire()
+    await sem.release()
+    assert await sem.acquire()
+
+    assert await sem2.acquire()
+    assert await sem2.acquire()
+
+    expected_time_to_acquire_upper_bound = time() - before_acquiring
+
+    sem_ext = s.extensions["semaphores"]
+
+    actual = sem_ext.metrics.copy()
+    for name, list_of_timedeltas in actual.pop("time_to_acquire_lease").items():
+        assert np.all(
+            np.array(list_of_timedeltas) <= expected_time_to_acquire_upper_bound
+        )
+    expected = {
+        "acquire_total": defaultdict(int, {"1": 2, "2": 2}),
+        "release_total": defaultdict(int, {"1": 1}),
+    }
+    assert actual == expected

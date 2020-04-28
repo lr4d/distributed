@@ -16,14 +16,6 @@ from .worker import get_client
 logger = logging.getLogger(__name__)
 
 
-try:
-    from prometheus_client import Counter, Summary
-
-    WRITE_PROMETHEUS_METRICS = True
-except ImportError:
-    WRITE_PROMETHEUS_METRICS = False
-
-
 class _Watch:
     def __init__(self, duration=None):
         self.duration = duration
@@ -79,25 +71,11 @@ class SemaphoreExtension:
 
         self.scheduler.extensions["semaphores"] = self
 
-        self.prometheus_metrics = {
-            "semaphore_acquire_total": Counter(
-                "semaphore_acquire_total",
-                "Total number of leases acquired",
-                labelnames=["name"],
-            ),
-            "semaphore_release_total": Counter(
-                "semaphore_release_total",
-                "Total number of leases released.\n"
-                "Note: if a semaphore is closed while there are still leases active, this count will not equal "
-                "`semaphore_acquired_total` after execution.",
-                labelnames=["name"],
-            ),
-            "semaphore_time_to_acquire_lease": Summary(
-                "semaphore_time_to_acquire_lease",
-                "Time it took to acquire a lease (note: this only includes time spent on scheduler side, it does not "
-                "include time spent on communication).",
-                labelnames=["name"],
-            ),
+        # {metric_name: {semaphore_name: metric}}
+        self.metrics = {
+            "acquire_total": defaultdict(int),  # counter
+            "release_total": defaultdict(int),  # counter
+            "time_to_acquire_lease": defaultdict(list),  # summary
         }
 
         validation_callback_time = parse_timedelta(
@@ -155,7 +133,7 @@ class SemaphoreExtension:
             now = time()
             logger.info("Acquire lease %s for %s at %s", lease_id, name, now)
             self.leases[name][lease_id] = now
-            self.prometheus_metrics["semaphore_acquire_total"].labels(name=name).inc()
+            self.metrics["acquire_total"][name] += 1
         else:
             result = False
         return result
@@ -214,9 +192,9 @@ class SemaphoreExtension:
                 time_to_acquire_lease = (
                     time() - self.pending_leases[name][pending_lease_id]
                 )
-                self.prometheus_metrics["semaphore_time_to_acquire_lease"].labels(
-                    name=name
-                ).observe(time_to_acquire_lease)
+                self.metrics["time_to_acquire_lease"][name].append(
+                    time_to_acquire_lease
+                )
                 del self.pending_leases[name][pending_lease_id]
 
                 return result
@@ -243,7 +221,7 @@ class SemaphoreExtension:
         # Everything needs to be atomic here.
         del self.leases[name][lease_id]
         self.events[name].set()
-        self.prometheus_metrics["semaphore_released_total"].labels(name=name).inc()
+        self.metrics["release_total"][name] += 1
 
     def _check_lease_timeout(self):
         now = time()
@@ -290,6 +268,9 @@ class SemaphoreExtension:
                         RuntimeWarning,
                     )
                 del self.pending_leases[name]
+            for _, metric_dict in self.metrics:
+                if name in metric_dict:
+                    del metric_dict[name]
 
 
 class Semaphore:
