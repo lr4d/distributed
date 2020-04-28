@@ -6,7 +6,6 @@ from asyncio import TimeoutError
 from collections import defaultdict, deque
 
 import dask
-from prometheus_client import Counter, Summary
 from tornado.ioloop import PeriodicCallback
 
 from distributed.utils_comm import retry_operation
@@ -15,6 +14,14 @@ from .utils import log_errors, parse_timedelta
 from .worker import get_client
 
 logger = logging.getLogger(__name__)
+
+
+try:
+    from prometheus_client import Counter, Summary
+
+    WRITE_PROMETHEUS_METRICS = True
+except ImportError:
+    WRITE_PROMETHEUS_METRICS = False
 
 
 class _Watch:
@@ -81,7 +88,7 @@ class SemaphoreExtension:
             "semaphore_release_total": Counter(
                 "semaphore_release_total",
                 "Total number of leases released.\n"
-                "Note: if a semapnore is closed while there are still leases active, this count will not equal "
+                "Note: if a semaphore is closed while there are still leases active, this count will not equal "
                 "`semaphore_acquired_total` after execution.",
                 labelnames=["name"],
             ),
@@ -168,7 +175,7 @@ class SemaphoreExtension:
             w = _Watch(timeout)
             w.start()
 
-            # We create a new uuid in case of improbable (but possible) race conditions with `lease_id`
+            # We create a new uuid in case of multiple acquire retries with the same `lease_id`
             pending_lease_id = uuid.uuid4().hex
             self.pending_leases[name][pending_lease_id] = time()
 
@@ -276,6 +283,13 @@ class SemaphoreExtension:
                         RuntimeWarning,
                     )
                 del self.leases[name]
+            if name in self.pending_leases:
+                if self.pending_leases[name]:
+                    warnings.warn(
+                        f"Closing semaphore {name} but there remain pending leases {sorted(self.pending_leases[name])}",
+                        RuntimeWarning,
+                    )
+                del self.pending_leases[name]
 
 
 class Semaphore:

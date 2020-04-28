@@ -1,9 +1,10 @@
+import asyncio
 import pickle
 import dask
 import pytest
 from dask.distributed import Client
 from time import sleep
-from distributed import Semaphore
+from distributed import Semaphore, fire_and_forget
 from distributed.comm import Comm
 from distributed.core import ConnectionPool
 from distributed.metrics import time
@@ -205,10 +206,25 @@ async def test_close_async(c, s, a, b):
     ):
         await sem.acquire()
 
+    sem2 = await Semaphore(name="t2", max_leases=1)
+    assert await sem2.acquire()
+
+    def f(sem_):
+        return sem_.acquire()
+
     semaphore_object = s.extensions["semaphores"]
+    fire_and_forget(c.submit(f, sem_=sem2))
+    while not len(semaphore_object.pending_leases["t2"]):  # Wait for the pending lease
+        await asyncio.sleep(0.01)
+    with pytest.warns(
+        RuntimeWarning, match="Closing semaphore .* but there remain pending leases .*"
+    ):
+        await sem2.close()
+
     assert not semaphore_object.max_leases
     assert not semaphore_object.leases
     assert not semaphore_object.events
+    assert not semaphore_object.pending_leases
 
 
 def test_close_sync(client):
@@ -420,7 +436,7 @@ async def test_oversubscribing_leases(c, s, a, b):
     assert await sem.get_value() == 0
 
 
-@gen_cluster(client=True,)
+@gen_cluster(client=True)
 async def test_timeout_zero(c, s, a, b):
     # Depending on the internals a timeout zero cannot work, e.g. when the
     # initial try already includes a wait. Since some test cases use this, it is

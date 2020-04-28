@@ -69,7 +69,6 @@ class _PrometheusCollector:
 
         sem_ext = self.server.extensions["semaphores"]
 
-        # FIXME: move these to write path??
         semaphore_active_leases_family = GaugeMetricFamily(
             "semaphore_active_leases",
             "Total number of currently active leases per semaphore.",
@@ -91,7 +90,9 @@ class _PrometheusCollector:
         yield semaphore_max_leases_family
 
         semaphore_pending_leases = GaugeMetricFamily(
-            "semaphore_pending_leases", "Leases currently pending", labels=["name"]
+            "semaphore_pending_leases",
+            "Number of currently pending leases",
+            labels=["name"],
         )
         for semaphore_name, lease_ids in sem_ext.pending_leases.items():
             semaphore_pending_leases.add_metric([semaphore_name], len(lease_ids))
