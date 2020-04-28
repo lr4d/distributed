@@ -1,15 +1,18 @@
-import uuid
-from collections import defaultdict, deque
 import asyncio
-import dask
+import logging
+import uuid
+import warnings
 from asyncio import TimeoutError
+from collections import defaultdict, deque
+
+import dask
+from prometheus_client import Counter, Gauge
 from tornado.ioloop import PeriodicCallback
+
+from distributed.utils_comm import retry_operation
+from .metrics import time
 from .utils import log_errors, parse_timedelta
 from .worker import get_client
-from .metrics import time
-import warnings
-import logging
-from distributed.utils_comm import retry_operation
 
 logger = logging.getLogger(__name__)
 
@@ -67,10 +70,6 @@ class SemaphoreExtension:
 
         self.scheduler.extensions["semaphores"] = self
 
-        # TODO: add prometheus counters
-
-        from prometheus_client import Counter, Gauge
-
         self.prometheus_metrics = {
             "semaphore_pending_leases": Gauge(
                 "semaphore_pending_leases",
@@ -80,6 +79,13 @@ class SemaphoreExtension:
             "semaphore_acquire_total": Counter(
                 "semaphore_acquire_total",
                 "Total number of leases acquired",
+                labelnames=["name"],
+            ),
+            "semaphore_release_total": Counter(
+                "semaphore_release_total",
+                "Total number of leases released.\n"
+                "Note: if a semapnore is closed while there are still leases active, this count will not equal "
+                "`semaphore_acquired_total` after execution.",
                 labelnames=["name"],
             ),
         }
@@ -138,7 +144,6 @@ class SemaphoreExtension:
         ):
             now = time()
             logger.info("Acquire lease %s for %s at %s", lease_id, name, now)
-            # TODO: increment counter of semaphore_acquired_total
             self.prometheus_metrics["semaphore_acquire_total"].labels(name=name).inc()
             self.leases[name][lease_id] = now
         else:
@@ -194,7 +199,7 @@ class SemaphoreExtension:
                     result,
                     w.elapsed(),
                 )
-                # TODO?: add value to semaphore_lease_pending gauge
+                # XXX: this should ideally be at the `read` path, but we don't keep track of the state of pending leases
                 self.prometheus_metrics["semaphore_pending_leases"].labels(
                     name=name
                 ).dec()
@@ -219,10 +224,10 @@ class SemaphoreExtension:
 
     def _release_value(self, name, lease_id):
         logger.info("Releasing %s for %s", lease_id, name)
-        # TODO: increment counter of semaphore_released_total
         # Everything needs to be atomic here.
         del self.leases[name][lease_id]
         self.events[name].set()
+        self.prometheus_metrics["semaphore_released_total"].labels(name=name).inc()
 
     def _check_lease_timeout(self):
         now = time()
