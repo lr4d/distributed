@@ -168,10 +168,9 @@ class SemaphoreExtension:
             w = _Watch(timeout)
             w.start()
 
-            # Do not update timestamp if acquiring twice with same `lease_id` (should not happen).
-            # FIXME: safe to remove if condition?
-            if lease_id not in self.pending_leases[name]:
-                self.pending_leases[name][lease_id] = time()
+            # We create a new uuid in case of improbable (but possible) race conditions with `lease_id`
+            pending_lease_id = uuid.uuid4().hex
+            self.pending_leases[name][pending_lease_id] = time()
 
             while True:
                 logger.info(
@@ -204,13 +203,14 @@ class SemaphoreExtension:
                     result,
                     w.elapsed(),
                 )
-                # FIXME: remove if condition?
-                if lease_id in self.pending_leases[name]:
-                    time_to_acquire_lease = time() - self.pending_leases[name][lease_id]
-                    self.prometheus_metrics["semaphore_time_to_acquire_lease"].labels(
-                        name=name
-                    ).observe(time_to_acquire_lease)
-                    del self.pending_leases[name][lease_id]
+
+                time_to_acquire_lease = (
+                    time() - self.pending_leases[name][pending_lease_id]
+                )
+                self.prometheus_metrics["semaphore_time_to_acquire_lease"].labels(
+                    name=name
+                ).observe(time_to_acquire_lease)
+                del self.pending_leases[name][pending_lease_id]
 
                 return result
 
