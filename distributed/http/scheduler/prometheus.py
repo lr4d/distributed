@@ -106,7 +106,7 @@ class _PrometheusCollector:
             "Total number of leases acquired",
             labels=["name"],
         )
-        for semaphore_name, count in sem_ext.metrics["acquire_total"]:
+        for semaphore_name, count in sem_ext.metrics["acquire_total"].items():
             semaphore_acquire_total.add_metric([semaphore_name], count)
         yield semaphore_acquire_total
 
@@ -117,7 +117,7 @@ class _PrometheusCollector:
             "`semaphore_acquired_total` after execution.",
             labels=["name"],
         )
-        for semaphore_name, count in sem_ext.metrics["release_total"]:
+        for semaphore_name, count in sem_ext.metrics["release_total"].items():
             semaphore_release_total.add_metric([semaphore_name], count)
         yield semaphore_release_total
 
