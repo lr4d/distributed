@@ -90,8 +90,11 @@ class _PrometheusCollector:
             semaphore_max_leases_family.add_metric([semaphore_name], max_leases)
         yield semaphore_max_leases_family
 
-        # for metric in sem_ext.prometheus_metrics.values():
-        #     yield metric
+        semaphore_pending_leases = GaugeMetricFamily(
+            "semaphore_pending_leases", "Leases currently pending", labels=["name"]
+        )
+        for semaphore_name, lease_ids in sem_ext.pending_leases.items():
+            semaphore_pending_leases.add_metric([semaphore_name], len(lease_ids))
 
 
 class PrometheusHandler(RequestHandler):

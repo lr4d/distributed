@@ -6,7 +6,7 @@ from asyncio import TimeoutError
 from collections import defaultdict, deque
 
 import dask
-from prometheus_client import Counter, Gauge
+from prometheus_client import Counter, Summary
 from tornado.ioloop import PeriodicCallback
 
 from distributed.utils_comm import retry_operation
@@ -56,6 +56,8 @@ class SemaphoreExtension:
         self.max_leases = dict()
         # {semaphore_name: {lease_id: lease_last_seen_timestamp}}
         self.leases = defaultdict(dict)
+        # {semaphore_name: {lease_id: start_lease_request_timestamp}}
+        self.pending_leases = defaultdict(dict)
 
         self.scheduler.handlers.update(
             {
@@ -71,11 +73,6 @@ class SemaphoreExtension:
         self.scheduler.extensions["semaphores"] = self
 
         self.prometheus_metrics = {
-            "semaphore_pending_leases": Gauge(
-                "semaphore_pending_leases",
-                "Total number of leases pending",
-                labelnames=["name"],
-            ),
             "semaphore_acquire_total": Counter(
                 "semaphore_acquire_total",
                 "Total number of leases acquired",
@@ -86,6 +83,12 @@ class SemaphoreExtension:
                 "Total number of leases released.\n"
                 "Note: if a semapnore is closed while there are still leases active, this count will not equal "
                 "`semaphore_acquired_total` after execution.",
+                labelnames=["name"],
+            ),
+            "semaphore_time_to_acquire_lease": Summary(
+                "semaphore_time_to_acquire_lease",
+                "Time it took to acquire a lease (note: this only includes time spent on scheduler side, it does not "
+                "include time spent on communication).",
                 labelnames=["name"],
             ),
         }
@@ -144,8 +147,8 @@ class SemaphoreExtension:
         ):
             now = time()
             logger.info("Acquire lease %s for %s at %s", lease_id, name, now)
-            self.prometheus_metrics["semaphore_acquire_total"].labels(name=name).inc()
             self.leases[name][lease_id] = now
+            self.prometheus_metrics["semaphore_acquire_total"].labels(name=name).inc()
         else:
             result = False
         return result
@@ -165,10 +168,12 @@ class SemaphoreExtension:
             w = _Watch(timeout)
             w.start()
 
+            # Do not update timestamp if acquiring twice with same `lease_id` (should not happen).
+            # FIXME: safe to remove if condition?
+            if lease_id not in self.pending_leases[name]:
+                self.pending_leases[name][lease_id] = time()
+
             while True:
-                self.prometheus_metrics["semaphore_pending_leases"].labels(
-                    name=name
-                ).inc()
                 logger.info(
                     "Trying to acquire %s for %s with %ss left.",
                     lease_id,
@@ -199,10 +204,14 @@ class SemaphoreExtension:
                     result,
                     w.elapsed(),
                 )
-                # XXX: this should ideally be at the `read` path, but we don't keep track of the state of pending leases
-                self.prometheus_metrics["semaphore_pending_leases"].labels(
-                    name=name
-                ).dec()
+                # FIXME: remove if condition?
+                if lease_id in self.pending_leases[name]:
+                    time_to_acquire_lease = time() - self.pending_leases[name][lease_id]
+                    self.prometheus_metrics["semaphore_time_to_acquire_lease"].labels(
+                        name=name
+                    ).observe(time_to_acquire_lease)
+                    del self.pending_leases[name][lease_id]
+
                 return result
 
     def release(self, comm=None, name=None, lease_id=None):
