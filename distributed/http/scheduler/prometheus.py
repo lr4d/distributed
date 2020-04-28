@@ -12,7 +12,6 @@ class _PrometheusCollector:
         from prometheus_client.core import (
             GaugeMetricFamily,
             CounterMetricFamily,
-            SummaryMetricFamily,
         )
 
         yield GaugeMetricFamily(
@@ -122,21 +121,21 @@ class _PrometheusCollector:
             semaphore_release_total.add_metric([semaphore_name], count)
         yield semaphore_release_total
 
-        semaphore_time_to_acquire_lease = (
-            SummaryMetricFamily(
-                "semaphore_time_to_acquire_lease",
-                "Time it took to acquire a lease (note: this only includes time spent on scheduler side, it does not "
-                "include time spent on communication).",
-                labels=["name"],
-            ),
-        )
-        for semaphore_name, list_of_timedeltas in sem_ext.metrics[
-            "time_to_acquire_lease"
-        ]:
-            semaphore_time_to_acquire_lease.add_metric(
-                [semaphore_name], list_of_timedeltas
-            )
-        yield semaphore_time_to_acquire_lease
+        # semaphore_time_to_acquire_lease = (
+        #     SummaryMetricFamily(
+        #         "semaphore_time_to_acquire_lease",
+        #         "Time it took to acquire a lease (note: this only includes time spent on scheduler side, it does not "
+        #         "include time spent on communication).",
+        #         labels=["name"],
+        #     ),
+        # )
+        # for semaphore_name, list_of_timedeltas in sem_ext.metrics[
+        #     "time_to_acquire_lease"
+        # ]:
+        #     semaphore_time_to_acquire_lease.add_metric(
+        #         [semaphore_name], list_of_timedeltas
+        #     )
+        # yield semaphore_time_to_acquire_lease
 
 
 class PrometheusHandler(RequestHandler):
