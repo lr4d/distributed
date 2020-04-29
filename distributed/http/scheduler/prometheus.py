@@ -124,69 +124,72 @@ class _PrometheusCollector:
 
         from prometheus_client.core import HistogramMetricFamily
 
-        semaphore_time_to_acquire_lease = (
-            HistogramMetricFamily(
-                "semaphore_time_to_acquire_lease",
-                "Time it took to acquire a lease (note: this only includes time spent on scheduler side, it does not "
-                "include time spent on communication).",
-                labels=["name"],
-            ),
-        )
         from prometheus_client.utils import INF
 
         # from bisect import bisect_left
-
-        HISTOGRAM_BUCKETS = (
-            0,
-            0.005,
-            0.01,
-            0.025,
-            0.05,
-            0.075,
-            0.1,
-            0.25,
-            0.5,
-            0.75,
-            1.0,
-            2.5,
-            5.0,
-            7.5,
-            10.0,
-            INF,
-        )
-        # We include upper and lower bounds so this is trivial
-        BUCKET_NAMES = [
-            f"{left}-{HISTOGRAM_BUCKETS[i + 1]}"
-            for i, left in enumerate(HISTOGRAM_BUCKETS)
-            if (i + 1) < len(HISTOGRAM_BUCKETS)
-        ]
-        # def _parse_timedelta_list(timedelta_list):
-        #     result = []
-        #     for value in sorted(timedelta_list):
-        #         (bisect_left(HISTOGRAM_BUCKETS, value), value)
-        import numpy as np
-
-        for semaphore_name, list_of_timedeltas in sem_ext.metrics[
-            "time_to_acquire_lease"
-        ].items():
-            print("\n\n\nEntering loop\n\n\n")
-            sample_count_per_bucket, _ = np.histogram(
-                list_of_timedeltas, bins=HISTOGRAM_BUCKETS
+        if sem_ext.metrics["time_to_acquire_lease"]:
+            semaphore_time_to_acquire_lease = (
+                HistogramMetricFamily(
+                    "semaphore_time_to_acquire_lease",
+                    "Time it took to acquire a lease (note: this only includes time spent on scheduler side, it does"
+                    " not "
+                    "include time spent on communication).",
+                    labels=["name"],
+                ),
             )
-            # Create pairs of bucket name and value
-            bucket_name_value_pairs = list(zip(BUCKET_NAMES, sample_count_per_bucket))
-            print(f"bucket_name_value_pairs = {bucket_name_value_pairs}")
-            semaphore_time_to_acquire_lease.add_metric(
-                [semaphore_name],
-                buckets=bucket_name_value_pairs,
-                sum_value=sum(list_of_timedeltas),
+            HISTOGRAM_BUCKETS = (
+                0,
+                0.005,
+                0.01,
+                0.025,
+                0.05,
+                0.075,
+                0.1,
+                0.25,
+                0.5,
+                0.75,
+                1.0,
+                2.5,
+                5.0,
+                7.5,
+                10.0,
+                INF,
             )
-        # if sem_ext.metrics["time_to_acquire_lease"]:
-        print("Hello")
+            # We include upper and lower bounds so this is trivial
+            BUCKET_NAMES = [
+                f"{left}-{HISTOGRAM_BUCKETS[i + 1]}"
+                for i, left in enumerate(HISTOGRAM_BUCKETS)
+                if (i + 1) < len(HISTOGRAM_BUCKETS)
+            ]
+            # def _parse_timedelta_list(timedelta_list):
+            #     result = []
+            #     for value in sorted(timedelta_list):
+            #         (bisect_left(HISTOGRAM_BUCKETS, value), value)
+            import numpy as np
 
-        logger.info("About to yield")
+            for semaphore_name, list_of_timedeltas in sem_ext.metrics[
+                "time_to_acquire_lease"
+            ].items():
+                print("\n\n\nEntering loop\n\n\n")
+                sample_count_per_bucket, _ = np.histogram(
+                    list_of_timedeltas, bins=HISTOGRAM_BUCKETS
+                )
+                # Create pairs of bucket name and value
+                bucket_name_value_pairs = list(
+                    zip(BUCKET_NAMES, sample_count_per_bucket)
+                )
+                print(f"bucket_name_value_pairs = {bucket_name_value_pairs}")
+                semaphore_time_to_acquire_lease.add_metric(
+                    [semaphore_name],
+                    buckets=bucket_name_value_pairs,
+                    sum_value=sum(list_of_timedeltas),
+                )
+            # if sem_ext.metrics["time_to_acquire_lease"]:
+            print("Hello")
 
-        yield semaphore_time_to_acquire_lease
+            logger.info("About to yield")
+
+            yield semaphore_time_to_acquire_lease
 
 
 class PrometheusHandler(RequestHandler):
