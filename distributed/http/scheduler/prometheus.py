@@ -9,10 +9,7 @@ class _PrometheusCollector:
         self.server = dask_server
 
     def collect(self):
-        from prometheus_client.core import (
-            GaugeMetricFamily,
-            CounterMetricFamily,
-        )
+        from prometheus_client.core import GaugeMetricFamily, CounterMetricFamily
 
         yield GaugeMetricFamily(
             "dask_scheduler_clients",
@@ -136,6 +133,7 @@ class _PrometheusCollector:
         # from bisect import bisect_left
 
         HISTOGRAM_BUCKETS = (
+            0,
             0.005,
             0.01,
             0.025,
@@ -152,7 +150,12 @@ class _PrometheusCollector:
             10.0,
             INF,
         )
-
+        # We include upper and lower bounds so this is trivial
+        BUCKET_NAMES = [
+            f"{left}-{HISTOGRAM_BUCKETS[i + 1]}"
+            for i, left in enumerate(HISTOGRAM_BUCKETS)
+            if (i + 1) < len(HISTOGRAM_BUCKETS)
+        ]
         # def _parse_timedelta_list(timedelta_list):
         #     result = []
         #     for value in sorted(timedelta_list):
@@ -162,9 +165,15 @@ class _PrometheusCollector:
         for semaphore_name, list_of_timedeltas in sem_ext.metrics[
             "time_to_acquire_lease"
         ].items():
-            np.histogram(list_of_timedeltas, bins=HISTOGRAM_BUCKETS)
+            sample_count_per_bucket, _ = np.histogram(
+                list_of_timedeltas, bins=HISTOGRAM_BUCKETS
+            )
+            # Create pairs of bucket name and value
+            bucket_name_value_pairs = zip(BUCKET_NAMES, sample_count_per_bucket)
             semaphore_time_to_acquire_lease.add_metric(
-                [semaphore_name], buckets=[], sum_value=sum(list_of_timedeltas)
+                [semaphore_name],
+                buckets=bucket_name_value_pairs,
+                sum_value=sum(list_of_timedeltas),
             )
         yield semaphore_time_to_acquire_lease
 
