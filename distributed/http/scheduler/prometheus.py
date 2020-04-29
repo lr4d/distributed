@@ -166,7 +166,7 @@ class _PrometheusCollector:
             # Create pairs of bucket name and value
             assert len(sample_count_per_bucket) == len(HISTOGRAM_BUCKETS)
             bucket_name_value_pairs = list(
-                zip(HISTOGRAM_BUCKETS, sample_count_per_bucket)
+                zip(map(str, HISTOGRAM_BUCKETS), sample_count_per_bucket)
             )
             # print(f"bucket_name_value_pairs = {bucket_name_value_pairs}")
             semaphore_time_to_acquire_lease.add_metric(
