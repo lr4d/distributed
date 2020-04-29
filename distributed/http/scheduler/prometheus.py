@@ -67,6 +67,10 @@ class _PrometheusCollector:
             tasks.add_metric([state], task_counter.get(state, 0.0))
         yield tasks
 
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logging.info("Semaphore start")
         sem_ext = self.server.extensions["semaphores"]
 
         semaphore_active_leases_family = GaugeMetricFamily(
@@ -177,6 +181,11 @@ class _PrometheusCollector:
                 buckets=bucket_name_value_pairs,
                 sum_value=sum(list_of_timedeltas),
             )
+        # if sem_ext.metrics["time_to_acquire_lease"]:
+        print("Hello")
+
+        logger.info("About to yield")
+
         yield semaphore_time_to_acquire_lease
 
 
