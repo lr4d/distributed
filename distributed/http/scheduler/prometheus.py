@@ -131,7 +131,6 @@ class _PrometheusCollector:
         )
 
         HISTOGRAM_BUCKETS = (
-            0,
             0.005,
             0.01,
             0.025,
@@ -148,25 +147,29 @@ class _PrometheusCollector:
             10.0,
             INF,
         )
-        BUCKET_NAMES = [
-            f"{left}-{HISTOGRAM_BUCKETS[i + 1]}"
-            for i, left in enumerate(HISTOGRAM_BUCKETS)
-            if (i + 1) < len(HISTOGRAM_BUCKETS)
-        ]
+        # BUCKET_NAMES = [
+        #     f"{left}-{HISTOGRAM_BUCKETS[i + 1]}"
+        #     for i, left in enumerate(HISTOGRAM_BUCKETS)
+        #     if (i + 1) < len(HISTOGRAM_BUCKETS)
+        # ]
         import numpy as np
 
         for semaphore_name, list_of_timedeltas in sem_ext.metrics[
             "time_to_acquire_lease"
         ].items():
             print("\n\n\nEntering loop\n\n\n")
+            # numpy uses a different logic for interpreting bin edges than prometheus, so we add a `0` as lower bound
             sample_count_per_bucket, _ = np.histogram(
-                list_of_timedeltas, bins=HISTOGRAM_BUCKETS
+                list_of_timedeltas, bins=[0, *HISTOGRAM_BUCKETS]
             )
             sample_count_per_bucket = (
                 sample_count_per_bucket.cumsum()
             )  # prometheus assumes cumulative histograms
             # Create pairs of bucket name and value
-            bucket_name_value_pairs = list(zip(BUCKET_NAMES, sample_count_per_bucket))
+            assert len(sample_count_per_bucket) == len(HISTOGRAM_BUCKETS)
+            bucket_name_value_pairs = list(
+                zip(HISTOGRAM_BUCKETS, sample_count_per_bucket)
+            )
             print(f"bucket_name_value_pairs = {bucket_name_value_pairs}")
             semaphore_time_to_acquire_lease.add_metric(
                 [semaphore_name],
