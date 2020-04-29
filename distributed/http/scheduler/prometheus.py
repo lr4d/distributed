@@ -165,11 +165,13 @@ class _PrometheusCollector:
         for semaphore_name, list_of_timedeltas in sem_ext.metrics[
             "time_to_acquire_lease"
         ].items():
+            print("\n\n\nEntering loop\n\n\n")
             sample_count_per_bucket, _ = np.histogram(
                 list_of_timedeltas, bins=HISTOGRAM_BUCKETS
             )
             # Create pairs of bucket name and value
-            bucket_name_value_pairs = zip(BUCKET_NAMES, sample_count_per_bucket)
+            bucket_name_value_pairs = list(zip(BUCKET_NAMES, sample_count_per_bucket))
+            print(f"bucket_name_value_pairs = {bucket_name_value_pairs}")
             semaphore_time_to_acquire_lease.add_metric(
                 [semaphore_name],
                 buckets=bucket_name_value_pairs,
