@@ -128,15 +128,14 @@ class _PrometheusCollector:
 
         # from bisect import bisect_left
         if sem_ext.metrics["time_to_acquire_lease"]:
-            semaphore_time_to_acquire_lease = (
-                HistogramMetricFamily(
-                    "semaphore_time_to_acquire_lease",
-                    "Time it took to acquire a lease (note: this only includes time spent on scheduler side, it does"
-                    " not "
-                    "include time spent on communication).",
-                    labels=["name"],
-                ),
+            semaphore_time_to_acquire_lease = HistogramMetricFamily(
+                "semaphore_time_to_acquire_lease",
+                "Time it took to acquire a lease (note: this only includes time spent on scheduler side, it does"
+                " not "
+                "include time spent on communication).",
+                labels=["name"],
             )
+
             HISTOGRAM_BUCKETS = (
                 0,
                 0.005,
