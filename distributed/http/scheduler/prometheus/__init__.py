@@ -1,7 +1,8 @@
 import toolz
 
-from ..utils import RequestHandler
-from ...scheduler import ALL_TASK_STATES
+from distributed.http.utils import RequestHandler
+from distributed.scheduler import ALL_TASK_STATES
+from .semaphore import SemaphoreMetricExtension
 
 
 class _PrometheusCollector:
@@ -68,6 +69,9 @@ class _PrometheusCollector:
         yield tasks
 
 
+COLLECTORS = [_PrometheusCollector, SemaphoreMetricExtension]
+
+
 class PrometheusHandler(RequestHandler):
     _collector = None
 
@@ -85,7 +89,10 @@ class PrometheusHandler(RequestHandler):
             return
 
         PrometheusHandler._collector = _PrometheusCollector(self.server)
-        prometheus_client.REGISTRY.register(PrometheusHandler._collector)
+
+        # Register collectors
+        for collector in COLLECTORS:
+            prometheus_client.REGISTRY.register(collector(self.server))
 
     def get(self):
         import prometheus_client
